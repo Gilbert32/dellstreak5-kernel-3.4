@@ -18,10 +18,24 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <mach/msm_rpcrouter.h>
+/* seems like msm_rpc_version.h was 
+   removed, so add changes from marc1706
+   to this file directly            */
+
+
+#if (CONFIG_MSM_AMSS_VERSION == 1550)
+#define TIME_REMOTE_MTOA_VERS                  0x10002
+#define DOG_KEEPALIVE_VERS                     0x10001
+#define RPC_DOG_KEEPALIVE_BEACON               2
+#define APP_TIMEREMOTE_PDEV_NAME               "rs30000048:0x00010002"
+#define HTC_PROCEDURE_SET_VIB_ON_OFF           22
+#define PM_LIBVERS          
+#endif
 
 /* dog_keepalive server definitions */
 
 #define DOG_KEEPALIVE_PROG 0x30000015
+#ifndef DOG_KEEPALIVE_VERS
 #if CONFIG_MSM_AMSS_VERSION==6210
 #define DOG_KEEPALIVE_VERS 0
 #define RPC_DOG_KEEPALIVE_BEACON 1
@@ -30,6 +44,7 @@
 #define RPC_DOG_KEEPALIVE_BEACON 2
 #else
 #error "Unsupported AMSS version"
+#endif
 #endif
 #define DOG_KEEPALIVE_VERS_COMP 0x00010001
 #define RPC_DOG_KEEPALIVE_NULL 0
