@@ -29,7 +29,7 @@
 #include <mach/msm_fb.h>
 #include <mach/msm_iomap.h>
 #include <mach/vreg.h>
-
+#include "dex_comm.h"
 #include "proc_comm.h"
 #include "board-htcleo.h"
 #include "devices.h"
