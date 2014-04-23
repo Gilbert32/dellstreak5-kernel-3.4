@@ -20,10 +20,18 @@
 #include <linux/device.h>
 
 struct mddi_info;
-
+#define NOTIFY_POWER    0x00000001
+#define NOTIFY_MSM_FB   0x00000010
 /* output interface format */
 #define MSM_MDP_OUT_IF_FMT_RGB565 0
 #define MSM_MDP_OUT_IF_FMT_RGB666 1
+#define display_notifier(fn, pri) {                     \
+	static struct notifier_block fn##_nb =          \
+	{ .notifier_call = fn, .priority = pri };       \
+	register_display_notifier(&fn##_nb);		\
+}
+extern int register_display_notifier(struct notifier_block *nb);
+extern int display_notifier_call_chain(unsigned long val, void *data);
 
 struct msm_fb_data {
 	int xres;	/* x resolution in pixels */

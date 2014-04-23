@@ -98,6 +98,15 @@ struct msm_camera_legacy_device_platform_data {
 #define MSM_CAMERA_FLASH_SRC_LED (0x00000001<<3)
 #define MSM_CAMERA_FLASH_SRC_LED1 (0x00000001<<4)
 
+struct camera_flash_cfg {
+	int num_flash_levels;
+	int (*camera_flash)(int level);
+	uint16_t low_temp_limit;
+	uint16_t low_cap_limit;
+	uint8_t postpone_led_mode;
+	struct camera_flash_info *flash_info;
+};
+
 struct msm_camera_sensor_flash_pmic {
 	uint8_t num_of_src;
 	uint32_t low_current;
@@ -295,6 +304,7 @@ struct msm_camera_sensor_info {
 	struct msm_actuator_info *actuator_info;
 	int pmic_gpio_enable;
 	struct msm_eeprom_info *eeprom_info;
+	struct camera_flash_cfg* flash_cfg;
 #ifdef CONFIG_HW_AUSTIN
 //Dual camera sensor pre-init
     int (*sensor_preinit)(void *);
@@ -624,8 +634,6 @@ static inline void msm_clk_dump_debug_info(void) {}
 #endif
 
 struct mmc_platform_data;
-int msm_add_sdcc(unsigned int controller,
-		struct mmc_platform_data *plat);
 
 void msm_pm_register_irqs(void);
 struct msm_usb_host_platform_data;
@@ -634,10 +642,25 @@ int msm_add_host(unsigned int host,
 #if defined(CONFIG_USB_FUNCTION_MSM_HSUSB) \
 	|| defined(CONFIG_USB_MSM_72K) || defined(CONFIG_USB_MSM_72K_MODULE)
 void msm_hsusb_set_vbus_state(int online);
+enum usb_connect_type {
+	CONNECT_TYPE_CLEAR = -2,
+	CONNECT_TYPE_UNKNOWN = -1,
+	CONNECT_TYPE_NONE = 0,
+	CONNECT_TYPE_USB,
+	CONNECT_TYPE_AC,
+	CONNECT_TYPE_9V_AC,
+	CONNECT_TYPE_WIRELESS,
+	CONNECT_TYPE_INTERNAL,
+	CONNECT_TYPE_UNSUPPORTED,
+#ifdef CONFIG_MACH_VERDI_LTE
+	/* Y cable with USB and 9V charger */
+	CONNECT_TYPE_USB_9V_AC,
+#endif
+};
 #else
 static inline void msm_hsusb_set_vbus_state(int online) {}
 #endif
-
+extern void msm_otg_set_vbus_state(int online);
 void msm_snddev_init(void);
 void msm_snddev_init_timpani(void);
 void msm_snddev_poweramp_on(void);

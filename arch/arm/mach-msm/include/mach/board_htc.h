@@ -55,15 +55,15 @@ struct mmc_platform_data;
 int __init msm_add_sdcc_devices(unsigned int controller, struct mmc_platform_data *plat);
 int __init msm_add_serial_devices(unsigned uart);
 
-#if defined(CONFIG_USB_FUNCTION_MSM_HSUSB)
+#if (1)
 /* START: add USB connected notify function */
 struct t_usb_status_notifier{
 	struct list_head notifier_link;
 	const char *name;
 	void (*func)(int online);
 };
-	int usb_register_notifier(struct t_usb_status_notifier *);
-	static LIST_HEAD(g_lh_usb_notifier_list);
+int usb_register_notifier(struct t_usb_status_notifier *);
+static LIST_HEAD(g_lh_usb_notifier_list);
 /* END: add USB connected notify function */
 #endif
 
