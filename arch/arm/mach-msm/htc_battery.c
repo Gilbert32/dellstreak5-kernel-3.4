@@ -110,7 +110,7 @@ tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec); \
 #endif
 
 const char *charger_tags[] = {"none", "USB", "AC", "SUPER AC", "WIRELESS CHARGER"};
-
+extern void msm_otg_set_vbus_state(int online);
 struct htc_battery_info {
 	int device_id;
 	int present;
@@ -1288,11 +1288,11 @@ static int htc_battery_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = POWER_SUPPLY_HEALTH_GOOD;
-		if (machine_is_paradise()) {
+		if (0) {			//machine_is_paradise
 			if (htc_batt_info.rep.batt_temp >= 500 ||
 				htc_batt_info.rep.batt_temp <= 0)
 				val->intval =  POWER_SUPPLY_HEALTH_OVERHEAT;
-		} else if (machine_is_spade()) {
+		} else if (0) {			//machine_is_spade
 			if (htc_batt_info.rep.batt_temp >= 450 ||
 				htc_batt_info.rep.batt_temp <= 0)
 				val->intval =  POWER_SUPPLY_HEALTH_OVERHEAT;
@@ -1405,7 +1405,7 @@ static int htc_rpc_charger_switch(unsigned enable)
 	BATT_LOG("%s: switch charger to mode: %u", __func__, enable);
 	if (enable == ENABLE_LIMIT_CHARGER) {
 		#if (!defined(CONFIG_MACH_PRIMOU))
-			ret = tps_set_charger_ctrl(ENABLE_LIMITED_CHG);
+//			ret = tps_set_charger_ctrl(ENABLE_LIMITED_CHG);
 		#else
 			phone_call_flag = PHONE_CALL_IN;
 			BATT_LOG("phone_call_flag:%d\n",phone_call_flag);
@@ -1413,7 +1413,7 @@ static int htc_rpc_charger_switch(unsigned enable)
 	}
 	else if (enable == DISABLE_LIMIT_CHARGER) {
 		#if (!defined(CONFIG_MACH_PRIMOU))
-			ret = tps_set_charger_ctrl(CLEAR_LIMITED_CHG);
+//			ret = tps_set_charger_ctrl(CLEAR_LIMITED_CHG);
 		#else
 			phone_call_flag = PHONE_CALL_STOP;
 			BATT_LOG("phone_call_flag:%d\n",phone_call_flag);
@@ -1648,7 +1648,7 @@ static ssize_t htc_battery_set_audio_stat(struct device *dev,
 			charging_enable = htc_batt_info.rep.charging_source;
 		pr_info("[BATT] %s() BT_DOCK_CHARGE_CTL:%d\n",
 			__func__, charging_enable);
-		tps_set_charger_ctrl(charging_enable);
+//		tps_set_charger_ctrl(charging_enable);
 	}
 
 	return count;
@@ -1970,9 +1970,9 @@ static int handle_battery_call(struct msm_rpc_server *server,
 		}
 		if (htc_batt_debug_mask & HTC_BATT_DEBUG_M2A_RPC)
 			BATT_LOG("M2A_RPC: set_charging: %d", args->enable);
-		if (htc_batt_info.charger == SWITCH_CHARGER_TPS65200)
-			tps_set_charger_ctrl(args->enable);
-		else if (htc_batt_info.charger == SWITCH_CHARGER)
+//		if (htc_batt_info.charger == SWITCH_CHARGER_TPS65200)
+//			tps_set_charger_ctrl(args->enable);
+		if (htc_batt_info.charger == SWITCH_CHARGER)
 			blocking_notifier_call_chain(&cable_status_notifier_list,
 				args->enable, NULL);
 		else {
@@ -2068,7 +2068,7 @@ static int ds2746_notifier_func(struct notifier_block *nfb, unsigned long action
 		if (htc_batt_info.charger == LINEAR_CHARGER)
 			htc_batt_info.func_battery_charging_ctrl(arg);
 		else if (htc_batt_info.charger == SWITCH_CHARGER_TPS65200)
-			tps_set_charger_ctrl(arg);
+//			tps_set_charger_ctrl(arg);
 		break;
 	case DS2746_LEVEL_UPDATE:
 		htc_battery_status_update(arg);
@@ -2297,7 +2297,7 @@ static int __init htc_battery_init(void)
 	wake_lock_init(&vbus_wake_lock, WAKE_LOCK_SUSPEND, "vbus_present");
 	mutex_init(&htc_batt_info.lock);
 	mutex_init(&htc_batt_info.rpc_lock);
-	usb_register_notifier(&usb_status_notifier);
+//	usb_register_notifier(&usb_status_notifier);
 #ifdef CONFIG_HTC_ACCESSORY_ONEWIRE
 	owe_charging_register_notifier(&owe_charging_notifier);
 #endif
