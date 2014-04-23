@@ -1142,7 +1142,7 @@ int ds2746_blocking_notify(unsigned long val, void *v)
 
 	if (val == DS2746_CHARGING_CONTROL){
 		chg_ctl = *(int *) v;
-		if (machine_is_passionc()){
+		if (0){				//machine_is_passionc()
 			if (chg_ctl <= 2){
 				gpio_direction_output(22, !(!!chg_ctl));/*PNC*/
 				set_charger_ctrl(chg_ctl);
