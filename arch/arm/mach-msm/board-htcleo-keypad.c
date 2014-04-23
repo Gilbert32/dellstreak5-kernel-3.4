@@ -83,9 +83,9 @@ static struct gpio_event_matrix_info htcleo_keypad_matrix_info = {
 	.input_gpios = htcleo_row_gpios,
 	.noutputs = ARRAY_SIZE(htcleo_col_gpios),
 	.ninputs = ARRAY_SIZE(htcleo_row_gpios),
-	.settle_time.tv_nsec = 40 * NSEC_PER_USEC,
-	.poll_time.tv_nsec = 20 * NSEC_PER_MSEC,
-	.debounce_delay.tv_nsec = 5 * NSEC_PER_MSEC,
+	.settle_time_lazy.tv_nsec = 40 * NSEC_PER_USEC,
+	.poll_time_lazy.tv_nsec = 20 * NSEC_PER_MSEC,
+	.debounce_delay_lazy.tv_nsec = 5 * NSEC_PER_MSEC,
 	.flags = (GPIOKPF_LEVEL_TRIGGERED_IRQ |
 		  GPIOKPF_REMOVE_PHANTOM_KEYS |
 		  GPIOKPF_PRINT_UNMAPPED_KEYS),

@@ -398,7 +398,7 @@ static void hs_mic_register(void)
 	struct headset_notifier notifier;
 	notifier.id = HEADSET_REG_MIC_BIAS;
 	notifier.func = htcleo_mic_enable;
-	headset_notifier_register(&notifier);
+//	headset_notifier_register(&notifier);
 }
 
 void __init htcleo_audio_init(void)
