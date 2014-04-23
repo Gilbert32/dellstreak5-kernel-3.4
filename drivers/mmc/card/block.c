@@ -2054,6 +2054,23 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *rqc)
 
 	return 0;
 }
+static int
+mmc_blk_set_blksize(struct mmc_blk_data *md, struct mmc_card *card)
+{
+	int err;
+
+	mmc_claim_host(card->host);
+	err = mmc_set_blocklen(card, 512);
+	mmc_release_host(card->host);
+
+	if (err) {
+		printk(KERN_ERR "%s: unable to set block size to 512: %d\n",
+			md->disk->disk_name, err);
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 {
