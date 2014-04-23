@@ -588,7 +588,7 @@ comment "iptables trigger is under Netfilter config (LED target)"
 config LEDS_QSD
         bool "QSD Leds"
         depends on ARCH_MSM || ARCH_QSD8X50
-        default y
+        default n
         help
         qsd leds for austin, not supported in EVB
 

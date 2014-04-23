@@ -660,7 +660,7 @@ config LIGHT_SENSOR_QSD
 
 config PSENSOR_CM3603
         tristate "CAPELLA CM3603 short distance Proximity Sensor"
-        default y
+        default n
         help
           Say Y here if you want support for the CM3603 P-Sensor.
 
