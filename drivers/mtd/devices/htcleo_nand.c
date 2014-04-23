@@ -2014,20 +2014,21 @@ int msm_nand_scan(struct mtd_info *mtd, int maxchips)
 	mtd->type = MTD_NANDFLASH;
 	mtd->flags = MTD_CAP_NANDFLASH;
 	/* mtd->ecctype = MTD_ECC_SW; */
-	mtd->erase = msm_nand_erase;
-	mtd->point = NULL;
-	mtd->unpoint = NULL;
-	mtd->read = msm_nand_read;
-	mtd->write = msm_nand_write;
-	mtd->read_oob = msm_nand_read_oob;
-	mtd->write_oob = msm_nand_write_oob;
+//gilbert32, replace func with _func
+	mtd->_erase = msm_nand_erase;
+	mtd->_point = NULL;
+	mtd->_unpoint = NULL;
+	mtd->_read = msm_nand_read;
+	mtd->_write = msm_nand_write;
+	mtd->_read_oob = msm_nand_read_oob;
+	mtd->_write_oob = msm_nand_write_oob;
 	/* mtd->sync = msm_nand_sync; */
-	mtd->lock = NULL;
+	mtd->_lock = NULL;
 	/* mtd->unlock = msm_nand_unlock; */
-	mtd->suspend = msm_nand_suspend;
-	mtd->resume = msm_nand_resume;
-	mtd->block_isbad = msm_nand_block_isbad;
-	mtd->block_markbad = msm_nand_block_markbad;
+	mtd->_suspend = msm_nand_suspend;
+	mtd->_resume = msm_nand_resume;
+	mtd->_block_isbad = msm_nand_block_isbad;
+	mtd->_block_markbad = msm_nand_block_markbad;
 	mtd->owner = THIS_MODULE;
 
 	/* Information provides to HTC SSD HW Info tool */
