@@ -35,6 +35,7 @@
 #include "board-htcleo.h"
 #include "devices.h"
 #include "proc_comm.h"
+#include "dex_comm.h"
 #include "pmic.h"
 
 #undef HTCLEO_DEBUG_MMC
