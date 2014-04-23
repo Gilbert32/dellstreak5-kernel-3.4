@@ -83,10 +83,16 @@ struct gpio_event_matrix_info {
 	unsigned int ninputs;
 	unsigned int noutputs;
 	/* time to wait before reading inputs after driving each output */
-	struct timespec settle_time;
+	ktime_t settle_time;
 	/* time to wait before scanning the keypad a second time */
-	struct timespec debounce_delay;
-	struct timespec poll_time;
+	ktime_t debounce_delay;
+	ktime_t poll_time;
+//older definitions for leo keypad (gilert32_lazy to figure out correct fix)
+	/* time to wait before reading inputs after driving each output */
+	struct timespec settle_time_lazy;
+	/* time to wait before scanning the keypad a second time */
+	struct timespec debounce_delay_lazy;
+	struct timespec poll_time_lazy;
 	unsigned flags;
 };
 
