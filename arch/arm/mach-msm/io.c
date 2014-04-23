@@ -111,6 +111,7 @@ static struct map_desc qsd8x50_io_desc[] __initdata = {
 #ifndef CONFIG_HW_AUSTIN 
 	MSM_DEVICE(TMR),  // already mapped in CSR
 #endif
+
 	MSM_DEVICE(GPIO1), 
 	MSM_DEVICE(GPIO2),
 	MSM_DEVICE(CLK_CTL),
@@ -118,6 +119,7 @@ static struct map_desc qsd8x50_io_desc[] __initdata = {
 	MSM_DEVICE(SCPLL),
 	MSM_DEVICE(AD5),
 	MSM_DEVICE(TCSR),
+	MSM_DEVICE(RAM_CONSOLE),
 	MSM_DEVICE(MDC),
 #if defined(CONFIG_DEBUG_MSM_UART1) || defined(CONFIG_DEBUG_MSM_UART2) || \
 	defined(CONFIG_DEBUG_MSM_UART3)
