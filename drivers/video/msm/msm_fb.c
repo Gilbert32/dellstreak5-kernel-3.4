@@ -3629,6 +3629,7 @@ struct fb_info *msm_fb_get_writeback_fb(void)
 
 	return NULL;
 }
+
 EXPORT_SYMBOL(msm_fb_get_writeback_fb);
 
 int msm_fb_writeback_start(struct fb_info *info)
@@ -3889,5 +3890,9 @@ int msm_fb_v4l2_update(void *par, bool bUserPtr,
 #endif
 }
 EXPORT_SYMBOL(msm_fb_v4l2_update);
-
+static BLOCKING_NOTIFIER_HEAD(display_chain_head);
+int register_display_notifier(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&display_chain_head, nb);
+}
 module_init(msm_fb_init);

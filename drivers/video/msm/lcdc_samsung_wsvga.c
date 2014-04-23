@@ -247,7 +247,7 @@ static int __init lcdc_samsung_panel_init(void)
 	pinfo->bpp = 18;
 	pinfo->fb_num = 2;
 	pinfo->clk_rate = 43192000;
-	pinfo->bl_max = PWM_LEVEL;
+//	pinfo->bl_max = PWM_LEVEL;
 	pinfo->bl_min = 1;
 
 	pinfo->lcdc.h_back_porch = 80;
