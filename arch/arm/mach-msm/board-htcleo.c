@@ -35,41 +35,42 @@
 #include <linux/akm8973.h>
 #include <../../../drivers/staging/android/timed_gpio.h>
 #include <linux/ds2746_battery.h>
-#include <linux/msm_kgsl.h>
 #include <linux/regulator/machine.h>
-
+#include <mach/vreg.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/setup.h>
-
+#include <mach/kgsl.h>
 #include <mach/board.h>
 #include <mach/board_htc.h>
 #include <mach/hardware.h>
 #include <mach/system.h>
+#include <mach/gpio.h>
 #include <mach/msm_iomap.h>
 #include <mach/perflock.h>
 #include <mach/htc_usb.h>
 #include <mach/msm_flashlight.h>
 #include <mach/msm_serial_hs.h>
-#ifdef CONFIG_USB_MSM_OTG_72K
+//#ifdef CONFIG_USB_MSM_OTG_72K
 #include <mach/msm_hsusb.h>
-#else
-#include <linux/usb/msm_hsusb.h>
-#endif
+//#else
+//#include <linux/usb/msm_hsusb.h>
+//#endif
 #include <mach/msm_hsusb_hw.h>
 #ifdef CONFIG_SERIAL_BCM_BT_LPM
 #include <mach/bcm_bt_lpm.h>
 #endif
+#include <mach/rpc_hsusb.h>
 #include <mach/htc_headset_mgr.h>
 #include <mach/htc_headset_gpio.h>
-
+#include <linux/moduleparam.h>
 #include <mach/board-htcleo-mac.h>
 #include <mach/board-htcleo-microp.h>
 #include <mach/board-htcleo-ts.h>
 #include <mach/socinfo.h>
 #include <mach/msm_memtypes.h>
-
+#include <mach/rpc_pmapp.h>
 #include "acpuclock.h"
 #include "board-htcleo.h"
 #include "devices.h"
@@ -78,7 +79,8 @@
 #include "footswitch.h"
 #include "pm.h"
 #include "pm-boot.h"
-
+#define usb_phy_shutdown() usb_phy_shutdown2()
+#define PMIC_VREG_GP6_LEVEL	2900
 #define ATAG_MAGLDR_BOOT    0x4C47414D
 struct tag_magldr_entry
 {
@@ -299,7 +301,7 @@ static struct i2c_board_info base_i2c_devices[] =
 ///////////////////////////////////////////////////////////////////////
 // USB
 ///////////////////////////////////////////////////////////////////////
-
+#if 0
 static unsigned ulpi_on_gpio_table[] = {
 	GPIO_CFG(0x68, 1, GPIO_OUTPUT, GPIO_NO_PULL, GPIO_4MA),
 	GPIO_CFG(0x6f, 1, GPIO_INPUT, GPIO_NO_PULL, GPIO_2MA),
@@ -389,7 +391,7 @@ static int usb_config_gpio(int config)
 	return 0;
 }
 
-static void usb_phy_shutdown(void)
+static void usb_phy_shutdown2(void)
 {
 	printk("%s: %s\n", __FILE__, __func__);
 	gpio_set_value(HTCLEO_GPIO_USBPHY_3V3_ENABLE, 1);
@@ -733,6 +735,252 @@ unsigned htcleo_get_vbus_state(void)
 		return 0;
 }
 
+#endif
+#if defined(CONFIG_USB_FS_HOST) || defined(CONFIG_USB_MSM_OTG_72K)
+static struct vreg *vreg_usb;
+static void msm_hsusb_vbus_power(unsigned phy_info, int on)
+{
+
+	switch (PHY_TYPE(phy_info)) {
+	case USB_PHY_INTEGRATED:
+		if (on)
+			msm_hsusb_vbus_powerup();
+		else
+			msm_hsusb_vbus_shutdown();
+		break;
+	case USB_PHY_SERIAL_PMIC:
+		if (on)
+			vreg_enable(vreg_usb);
+		else
+			vreg_disable(vreg_usb);
+		break;
+	default:
+		pr_err("%s: undefined phy type ( %X ) \n", __func__,
+						phy_info);
+	}
+
+}
+#endif 
+
+static struct msm_usb_host_platform_data msm_usb_host_pdata = {
+        .phy_info       = (USB_PHY_INTEGRATED | USB_PHY_MODEL_180NM),
+};
+static void msm_fsusb_setup_gpio(unsigned int enable);
+#ifdef CONFIG_USB_FS_HOST
+static struct msm_usb_host_platform_data msm_usb_host2_pdata = {
+        .phy_info       = USB_PHY_SERIAL_PMIC,
+        .config_gpio = msm_fsusb_setup_gpio,
+        .vbus_power = msm_hsusb_vbus_power,
+};
+#endif
+
+#ifdef CONFIG_USB_MSM_OTG_72K
+static int hsusb_rpc_connect(int connect)
+{
+	if (connect)
+		return msm_hsusb_rpc_connect();
+	else
+		return msm_hsusb_rpc_close();
+}
+
+/* TBD: 8x50 FFAs have internal 3p3 voltage regulator as opposed to
+ * external 3p3 voltage regulator on Surf platform. There is no way
+ * s/w can detect fi concerned regulator is internal or external to
+ * to MSM. Internal 3p3 regulator is powered through boost voltage
+ * regulator where as external 3p3 regulator is powered through VPH.
+ * So for internal voltage regulator it is required to power on
+ * boost voltage regulator first. Unfortunately some of the FFAs are
+ * re-worked to install external 3p3 regulator. For now, assuming all
+ * FFAs have 3p3 internal regulators and all SURFs have external 3p3
+ * regulator as there is no way s/w can determine if theregulator is
+ * internal or external. May be, we can implement this flag as kernel
+ * boot parameters so that we can change code behaviour dynamically
+ */
+static int regulator_3p3_is_internal;
+static struct vreg *vreg_5v;
+static struct vreg *vreg_3p3;
+static int msm_hsusb_ldo_init(int init)
+{
+	if (init) {
+		if (regulator_3p3_is_internal) {
+			vreg_5v = vreg_get(NULL, "boost");
+			if (IS_ERR(vreg_5v))
+				return PTR_ERR(vreg_5v);
+			vreg_set_level(vreg_5v, 5000);
+		}
+
+		vreg_3p3 = vreg_get(NULL, "usb");
+		if (IS_ERR(vreg_3p3))
+			return PTR_ERR(vreg_3p3);
+		vreg_set_level(vreg_3p3, 3300);
+	} else {
+		if (regulator_3p3_is_internal)
+			vreg_put(vreg_5v);
+		vreg_put(vreg_3p3);
+	}
+
+	return 0;
+}
+
+static int msm_hsusb_ldo_enable(int enable)
+{
+	static int ldo_status;
+	int ret;
+
+	if (ldo_status == enable)
+		return 0;
+
+	if (regulator_3p3_is_internal && (!vreg_5v || IS_ERR(vreg_5v)))
+		return -ENODEV;
+	if (!vreg_3p3 || IS_ERR(vreg_3p3))
+		return -ENODEV;
+
+	ldo_status = enable;
+
+	if (enable) {
+		if (regulator_3p3_is_internal) {
+			ret = vreg_enable(vreg_5v);
+			if (ret)
+				return ret;
+
+			/* power supply to 3p3 regulator can vary from
+			 * USB VBUS or VREG 5V. If the power supply is
+			 * USB VBUS cable disconnection cannot be
+			 * deteted. Select power supply to VREG 5V
+			 */
+			/* TBD: comeup with a better name */
+			ret = pmic_vote_3p3_pwr_sel_switch(1);
+			if (ret)
+				return ret;
+		}
+		ret = vreg_enable(vreg_3p3);
+
+		return ret;
+	} else {
+		if (regulator_3p3_is_internal) {
+			ret = vreg_disable(vreg_5v);
+			if (ret)
+				return ret;
+			ret = pmic_vote_3p3_pwr_sel_switch(0);
+			if (ret)
+				return ret;
+		}
+			ret = vreg_disable(vreg_3p3);
+
+			return ret;
+	}
+}
+
+static int msm_hsusb_pmic_notif_init(void (*callback)(int online), int init)
+{
+	int ret;
+
+	if (init) {
+		ret = msm_pm_app_rpc_init(callback);
+	} else {
+		msm_pm_app_rpc_deinit(callback);
+		ret = 0;
+	}
+	return ret;
+}
+
+static struct msm_otg_platform_data msm_otg_pdata = {
+        .rpc_connect    = hsusb_rpc_connect,
+        .pmic_vbus_notif_init         = msm_hsusb_pmic_notif_init,
+        .pemp_level              = PRE_EMPHASIS_WITH_10_PERCENT,
+        .cdr_autoreset           = CDR_AUTO_RESET_DEFAULT,
+        .drv_ampl                = HS_DRV_AMPLITUDE_5_PERCENT,
+        .vbus_power              = msm_hsusb_vbus_power,
+        .chg_vbus_draw           = hsusb_chg_vbus_draw,
+        .chg_connected           = hsusb_chg_connected,
+        .chg_init                = hsusb_chg_init,
+        .phy_can_powercollapse   = 1,
+        .ldo_init                = msm_hsusb_ldo_init,
+        .ldo_enable              = msm_hsusb_ldo_enable,
+};
+
+#endif
+
+static struct msm_hsusb_gadget_platform_data msm_gadget_pdata;
+
+/////////////////////////////////
+
+#ifdef CONFIG_USB_FS_HOST
+static struct msm_gpio fsusb_config[] = {
+        { GPIO_CFG(139, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "fs_dat" },
+        { GPIO_CFG(140, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "fs_se0" },
+        { GPIO_CFG(141, 3, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "fs_oe_n" },
+};
+
+static int fsusb_gpio_init(void)
+{
+        return msm_gpios_request(fsusb_config, ARRAY_SIZE(fsusb_config));
+}
+
+static void msm_fsusb_setup_gpio(unsigned int enable)
+{
+        if (enable)
+                msm_gpios_enable(fsusb_config, ARRAY_SIZE(fsusb_config));
+        else
+                msm_gpios_disable(fsusb_config, ARRAY_SIZE(fsusb_config));
+
+}
+
+static struct msm_hsusb_platform_data msm_hsusb_pdata = {
+        .phy_reset = internal_phy_reset,
+        .phy_init_seq = hsusb_phy_init_seq,
+	.phy_info       = (USB_PHY_INTEGRATED | USB_PHY_MODEL_180NM),
+	.version        = 0x0100,
+        .vendor_id          = 0x5c6,
+        .product_name       = "Qualcomm HSUSB Device",
+        .serial_number      = "1234567890ABCDEF",
+        .manufacturer_name  = "Qualcomm Incorporated",
+        .compositions   = usb_func_composition,
+        .num_compositions = ARRAY_SIZE(usb_func_composition),
+        .function_map   = usb_functions_map,
+        .num_functions  = ARRAY_SIZE(usb_functions_map),
+        .config_gpio    = NULL,
+};
+
+#endif
+static void __init qsd8x50_init_usb(void)
+{
+
+#ifdef CONFIG_USB_MSM_OTG_72K
+
+	platform_device_register(&msm_device_otg);
+#endif
+
+#ifdef CONFIG_USB_FS_HOST
+        platform_device_register(&msm_device_hsusb_peripheral);
+#endif
+
+#ifdef CONFIG_USB_MSM_72K
+	platform_device_register(&msm_device_gadget_peripheral);
+#endif
+
+#if defined(CONFIG_USB_FS_HOST) || defined(CONFIG_USB_MSM_OTG_72K)
+	vreg_usb = vreg_get(NULL, "boost");
+
+	if (IS_ERR(vreg_usb)) {
+		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
+		       __func__, PTR_ERR(vreg_usb));
+		return;
+	}
+#endif
+
+	platform_device_register(&msm_device_hsusb_otg);
+	msm_add_host(0, &msm_usb_host_pdata);
+
+#ifdef CONFIG_USB_FS_HOST
+        if (fsusb_gpio_init())
+                return;
+	fsusb_gpio_init();
+	msm_add_host(0, &msm_usb_host2_pdata);
+#endif
+}
+
+//end new code
 
 ///////////////////////////////////////////////////////////////////////
 // Flashlight
@@ -825,13 +1073,13 @@ void config_camera_off_gpios(void)
 static struct resource msm_camera_resources[] =
 {
 	{
-		.start	= MSM_VFE_PHYS,
-		.end	= MSM_VFE_PHYS + MSM_VFE_SIZE - 1,
+		.start	= 0xA0F00000,
+		.end	= 0xA0F00000 + SZ_1M - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	{
 		.start	= INT_VFE,
-		 INT_VFE,
+		.end	= INT_VFE,
 		.flags	= IORESOURCE_IRQ,
 	},
 };
@@ -896,7 +1144,7 @@ char bdaddr[BDADDR_STR_SIZE];
 module_param_string(bdaddr, bdaddr, sizeof(bdaddr), 0400);
 MODULE_PARM_DESC(bdaddr, "bluetooth address");
 /* end AOSP style interface */
-
+#if 0
 #ifdef CONFIG_SERIAL_MSM_HS
 static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
 	.rx_wakeup_irq = -1,
@@ -924,6 +1172,14 @@ struct platform_device bcm_bt_lpm_device = {
 #endif
 #endif
 
+#endif
+
+static struct platform_device htcleo_rfkill =
+{
+	.name = "htcleo_rfkill",
+	.id = -1,
+};
+
 static uint32_t bt_gpio_table[] = {
 	PCOM_GPIO_CFG(HTCLEO_GPIO_BT_UART1_RTS, 2, GPIO_OUTPUT,
 		      GPIO_PULL_UP, GPIO_8MA),
@@ -943,12 +1199,220 @@ static uint32_t bt_gpio_table[] = {
 		      GPIO_PULL_DOWN, GPIO_4MA),
 };
 
-static struct platform_device htcleo_rfkill =
-{
-	.name = "htcleo_rfkill",
-	.id = -1,
+static struct resource bluesleep_resources[] = {
+	{
+		.name	= "gpio_host_wake",
+		.start	= HTCLEO_GPIO_BT_HOST_WAKE,
+		.end	= HTCLEO_GPIO_BT_HOST_WAKE,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "gpio_ext_wake",
+		.start	= HTCLEO_GPIO_BT_CHIP_WAKE,
+		.end	= HTCLEO_GPIO_BT_CHIP_WAKE,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "host_wake",
+		.start	= MSM_GPIO_TO_INT(HTCLEO_GPIO_BT_HOST_WAKE),
+		.end	= MSM_GPIO_TO_INT(HTCLEO_GPIO_BT_HOST_WAKE),
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+// Jagan-
+
+static struct platform_device msm_bluesleep_device = {
+	.name = "bluesleep",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(bluesleep_resources),
+	.resource	= bluesleep_resources,
 };
 
+#ifdef CONFIG_MSM_BT_POWER
+static struct platform_device msm_bt_power_device = {
+	.name = "bt_power",
+};
+
+enum {
+	BT_SYSRST,
+	BT_WAKE,
+	BT_HOST_WAKE,
+//	BT_VDD_IO,
+	BT_RFR,
+	BT_CTS,
+	BT_RX,
+	BT_TX,
+	BT_VDD_FREG
+};
+
+static struct msm_gpio bt_config_power_off[] = {
+	{ GPIO_CFG(HTCLEO_GPIO_BT_RESET_N, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"BT SYSRST" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_CHIP_WAKE, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"BT WAKE" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_HOST_WAKE, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"HOST WAKE" },
+//	{ GPIO_CFG(22, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+//		"BT VDD_IO" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_UART1_RTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_RFR" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_UART1_CTS, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_CTS" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_UART1_RX, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_RX" },
+	{ GPIO_CFG(46, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		"UART1DM_TX" }
+};
+
+static struct msm_gpio bt_config_power_on[] = {
+	{ GPIO_CFG(HTCLEO_GPIO_BT_RESET_N, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"BT SYSRST" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_CHIP_WAKE, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"BT WAKE" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_HOST_WAKE, 0, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"HOST WAKE" },
+//	{ GPIO_CFG(22, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+//		"BT VDD_IO" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_UART1_RTS, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_RFR" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_UART1_CTS, 2, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_CTS" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_UART1_RX, 2, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_RX" },
+	{ GPIO_CFG(HTCLEO_GPIO_BT_UART1_TX, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+		"UART1DM_TX" }
+};
+
+static int bluetooth_power(int on)
+{
+	int rc;
+
+	if (on) {
+		/* units of mV, steps of 50 mV */
+
+		rc = msm_gpios_enable(bt_config_power_on,
+					ARRAY_SIZE(bt_config_power_on));
+		if (rc < 0) {
+			printk(KERN_ERR
+				"%s: bt power on gpio config failed: %d\n",
+				__func__, rc);
+			return rc;
+		}
+
+/*		if (machine_is_qsd8x50_ffa()) {
+			rc = msm_gpios_enable
+					(wlan_config_power_on,
+					 ARRAY_SIZE(wlan_config_power_on));
+			if (rc < 0) {
+				printk
+				 (KERN_ERR
+				 "%s: wlan power on gpio config failed: %d\n",
+					__func__, rc);
+				return rc;
+			}
+		}*/
+
+//		gpio_set_value(22, on); /* VDD_IO */
+		gpio_set_value(HTCLEO_GPIO_BT_RESET_N, on); /* SYSRST */
+
+//		if (machine_is_qsd8x50_ffa()) {
+//			gpio_set_value(138, 0); /* WLAN: CHIP_PWD */
+//			gpio_set_value(113, on); /* WLAN */
+//		}
+//	} else {
+//		if (machine_is_qsd8x50_ffa()) {
+//			gpio_set_value(138, on); /* WLAN: CHIP_PWD */
+//			gpio_set_value(113, on); /* WLAN */
+//		}
+
+		gpio_set_value(HTCLEO_GPIO_BT_RESET_N, on); /* SYSRST */
+//		gpio_set_value(22, on); /* VDD_IO */
+
+/*		rc = vreg_disable(vreg_wlan);
+		if (rc) {
+			printk(KERN_ERR "%s: vreg wlan disable failed (%d)\n",
+					__func__, rc);
+			return -EIO;
+		}
+*/
+		rc = msm_gpios_enable(bt_config_power_off,
+					ARRAY_SIZE(bt_config_power_off));
+		if (rc < 0) {
+			printk(KERN_ERR
+				"%s: bt power off gpio config failed: %d\n",
+				__func__, rc);
+			return rc;
+		}
+/*
+		if (machine_is_qsd8x50_ffa()) {
+			rc = msm_gpios_enable
+					(wlan_config_power_off,
+					 ARRAY_SIZE(wlan_config_power_off));
+			if (rc < 0) {
+				printk
+				 (KERN_ERR
+				 "%s: wlan power off gpio config failed: %d\n",
+					__func__, rc);
+				return rc;
+			}
+		}*/
+	}
+
+	printk(KERN_DEBUG "Bluetooth power switch: %d\n", on);
+
+	return 0;
+}
+
+static void __init bt_power_init(void)
+{
+	struct vreg *vreg_bt;
+	int rc;
+
+//	if (machine_is_qsd8x50_ffa()) {
+//		gpio_set_value(138, 0); /* WLAN: CHIP_PWD */
+//		gpio_set_value(113, 0); /* WLAN */
+//	}
+
+	gpio_set_value(HTCLEO_GPIO_BT_RESET_N, 0); /* SYSRST */
+//	gpio_set_value(22, 0); /* VDD_IO */
+
+	/* do not have vreg bt defined, gp6 is the same */
+	/* vreg_get parameter 1 (struct device *) is ignored */
+	vreg_bt = vreg_get(NULL, "gp6");
+
+	if (IS_ERR(vreg_bt)) {
+		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
+		       __func__, PTR_ERR(vreg_bt));
+		goto exit;
+	}
+
+	/* units of mV, steps of 50 mV */
+	rc = vreg_set_level(vreg_bt, PMIC_VREG_GP6_LEVEL);
+	if (rc) {
+		printk(KERN_ERR "%s: vreg bt set level failed (%d)\n",
+		       __func__, rc);
+		goto exit;
+	}
+	rc = vreg_enable(vreg_bt);
+	if (rc) {
+		printk(KERN_ERR "%s: vreg bt enable failed (%d)\n",
+		       __func__, rc);
+		goto exit;
+	}
+
+	if (bluetooth_power(0))
+		goto exit;
+
+	msm_bt_power_device.dev.platform_data = &bluetooth_power;
+
+	printk(KERN_DEBUG "Bluetooth power switch: initialized\n");
+
+exit:
+	return;
+}
+#else
+#define bt_power_init(x) do {} while (0)
+#endif	//CONFIG_MSM_BT_POWER
 ///////////////////////////////////////////////////////////////////////
 // PM Platform data
 ///////////////////////////////////////////////////////////////////////
@@ -1078,42 +1542,48 @@ static struct platform_device qsd_device_spi = {
 
 /* start kgsl */
 static struct resource kgsl_3d0_resources[] = {
-	{
-		.name  = KGSL_3D0_REG_MEMORY,
-		.start = 0xA0000000,
-		.end = 0xA001ffff,
-		.flags = IORESOURCE_MEM,
-	},
-	{
-		.name = KGSL_3D0_IRQ,
-		.start = INT_GRAPHICS,
-		.end = INT_GRAPHICS,
-		.flags = IORESOURCE_IRQ,
-	},
+        {       
+                .name  = KGSL_3D0_REG_MEMORY,
+                .start = 0xA0000000,
+                .end = 0xA001ffff,
+                .flags = IORESOURCE_MEM,
+        },
+        {       
+                .name   = KGSL_3D0_SHADER_MEMORY,
+                .start = MSM_GPU_PHYS_BASE,
+                .end = MSM_GPU_PHYS_BASE + MSM_GPU_PHYS_SIZE - 1,
+                .flags = IORESOURCE_MEM,
+        },
+        {       
+                .name = KGSL_3D0_IRQ,
+                .start = INT_GRAPHICS,
+                .end = INT_GRAPHICS,
+                .flags = IORESOURCE_IRQ,
+        },
 };
 
 static struct kgsl_device_platform_data kgsl_3d0_pdata = {
-	.pwrlevel = {
-		{
-			.gpu_freq = 0,
-			.bus_freq = 128000000,
-		},
-	},
-	.init_level = 0,
-	.num_levels = 1,
-	.set_grp_async = NULL,
-	.idle_timeout = HZ/5,
-	.clk_map = KGSL_CLK_CORE | KGSL_CLK_MEM,
+        .pwrlevel = {
+                {       
+                        .gpu_freq = 0,
+                        .bus_freq = 128000000,
+                },
+        },
+        .init_level = 0,
+        .num_levels = 1,
+        .set_grp_async = NULL,
+        .idle_timeout = HZ/5,
+        .clk_map = KGSL_CLK_CORE | KGSL_CLK_MEM,
 };
 
 struct platform_device msm_kgsl_3d0 = {
-	.name = "kgsl-3d0",
-	.id = 0,
-	.num_resources = ARRAY_SIZE(kgsl_3d0_resources),
-	.resource = kgsl_3d0_resources,
-	.dev = {
-		.platform_data = &kgsl_3d0_pdata,
-	},
+        .name = "kgsl-3d0",
+        .id = 0,
+        .num_resources = ARRAY_SIZE(kgsl_3d0_resources),
+        .resource = kgsl_3d0_resources,
+        .dev = {
+                .platform_data = &kgsl_3d0_pdata,
+        },
 };
 /* end kgsl */
 
@@ -1422,11 +1892,11 @@ static struct platform_device *devices[] __initdata =
 #if !defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_device_uart1,
 #endif
-#ifdef CONFIG_SERIAL_MSM_HS
-#ifdef CONFIG_SERIAL_BCM_BT_LPM
-	&bcm_bt_lpm_device,
-#endif
-#endif
+//#ifdef CONFIG_SERIAL_MSM_HS
+//#ifdef CONFIG_SERIAL_BCM_BT_LPM
+//	&bcm_bt_lpm_device,
+//#endif
+//#endif
 #ifdef CONFIG_720P_CAMERA
     //&android_pmem_venc_device,
 #endif
@@ -1434,6 +1904,10 @@ static struct platform_device *devices[] __initdata =
 	&htcleo_rfkill,
 	&msm_device_otg,
 //	&msm_device_gadget_peripheral,
+	&msm_bluesleep_device,
+#ifdef CONFIG_MSM_BT_POWER
+	&msm_bt_power_device,
+#endif
 	&qsd_device_spi,
 	&msm_device_dmov,
 	&msm_device_nand,
@@ -1694,30 +2168,48 @@ static void __init qsd8x50_reserve(void)
 ///////////////////////////////////////////////////////////////////////
 // Init
 ///////////////////////////////////////////////////////////////////////
-
+void (*msm_hw_reset_hook)(void);
 static void __init htcleo_init(void)
 {
 // Cotulla vibro test
-//	*(uint32_t*)0xF800380C |= 0x20;
+	*(uint32_t*)0xF800380C |= 0x20;
 
 	printk("htcleo_init()\n");
 	msm_hw_reset_hook = htcleo_reset;
 
 	do_grp_reset();
 	do_sdc1_reset();
-	msm_clock_init(&qds8x50_clock_init_data);
-	acpuclk_init(&acpuclk_8x50_soc_data);
+	msm_clock_init(&qsd8x50_clock_init_data);
+ 	platform_device_register(&qsd8x50_device_acpuclk);
+
+#ifdef CONFIG_USB_FS_HOST
+        msm_hsusb_pdata.swfi_latency =
+                msm_pm_data
+                [MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency;
+        msm_device_hsusb_peripheral.dev.platform_data = &msm_hsusb_pdata;
+#endif
+
+#ifdef CONFIG_USB_MSM_OTG_72K
+	msm_otg_pdata.swfi_latency =
+		msm_pm_data
+		[MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT].latency;
+	msm_device_otg.dev.platform_data = &msm_otg_pdata;
+#endif
+	msm_device_gadget_peripheral.dev.platform_data = &msm_gadget_pdata;
+	msm_gadget_pdata.is_phy_status_timer_on = 1;
 
 	init_dex_comm();
 
 #ifdef CONFIG_SERIAL_MSM_HS
-	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;
+//	msm_device_uart_dm1.dev.platform_data = &msm_uart_dm1_pdata;
 #if 0
 	msm_device_uart_dm1.name = "msm_serial_hs_brcm"; /* for bcm */
 	msm_device_uart_dm1.resource[3].end = 6;
 #endif
 #endif
 
+	qsd8x50_init_usb();
+	bt_power_init();
 	config_gpio_table(bt_gpio_table, ARRAY_SIZE(bt_gpio_table));
 
 	htcleo_audio_init();
@@ -1732,7 +2224,7 @@ static void __init htcleo_init(void)
 	htcleo_init_panel();
 
 #ifdef CONFIG_USB_G_ANDROID
-	htcleo_add_usb_devices();
+//	htcleo_add_usb_devices();
 #endif
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 
@@ -1752,7 +2244,7 @@ static void __init htcleo_init(void)
 // Bootfunctions
 ///////////////////////////////////////////////////////////////////////
 
-static void __init htcleo_fixup(struct machine_desc *desc, struct tag *tags,
+static void __init htcleo_fixup(struct tag *tags,
 				 char **cmdline, struct meminfo *mi)
 {
 	/* Blink the camera LED shortly to show that we're alive! */
@@ -1787,7 +2279,7 @@ static void __init htcleo_map_io(void)
 #endif
 #endif
 	printk(KERN_ERR "%s: ramconsole init done!\n",__func__);
-//	*(uint32_t*)0xF800380C |= 0x20;
+	*(uint32_t*)0xF800380C |= 0x20;
 }
 
 extern struct sys_timer msm_timer;
@@ -1797,7 +2289,7 @@ MACHINE_START(HTCLEO, "htcleo")
 	.phys_io        = MSM_DEBUG_UART_PHYS,
 	.io_pg_offst    = ((MSM_DEBUG_UART_BASE) >> 18) & 0xfffc,
 #endif
-	.boot_params	= (CONFIG_PHYS_OFFSET + 0x00000100),
+        .atag_offset    = 0x100,//	.boot_params	= (CONFIG_PHYS_OFFSET + 0x00000100),
 	.fixup		= htcleo_fixup,
 	.map_io		= htcleo_map_io,
     	.reserve	= qsd8x50_reserve,
