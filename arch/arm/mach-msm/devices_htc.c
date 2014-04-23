@@ -25,7 +25,7 @@
 #include <mach/board.h>
 #include <mach/board_htc.h>
 #include <mach/msm_hsusb.h>
-#include <linux/usb/mass_storage_function.h>
+//#include <linux/usb/mass_storage_function.h>
 #include <linux/usb/android.h>
 
 #include <asm/mach/flash.h>
@@ -106,6 +106,7 @@ static struct msm_hsusb_product usb_products[] = {
 };
 #endif
 
+/*
 struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.phy_reset = internal_phy_reset,
 	.phy_init_seq = hsusb_phy_init_seq,
@@ -122,6 +123,7 @@ struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.num_products = ARRAY_SIZE(usb_products),
 #endif
 };
+*/
 
 #ifdef CONFIG_USB_FUNCTION
 static struct usb_mass_storage_platform_data mass_storage_pdata = {
@@ -160,10 +162,10 @@ static struct platform_device android_usb_device = {
 	},
 };
 #endif
-
+/*
 void __init msm_add_usb_devices(void (*phy_reset) (void))
 {
-	/* setup */
+	/* setup *//*
 	if (phy_reset)
 		msm_hsusb_pdata.phy_reset = phy_reset;
 	msm_device_hsusb.dev.platform_data = &msm_hsusb_pdata;
@@ -174,8 +176,9 @@ void __init msm_add_usb_devices(void (*phy_reset) (void))
 #ifdef CONFIG_USB_ANDROID
 	platform_device_register(&android_usb_device);
 #endif
-}
+}*/
 
+/*
 static struct android_pmem_platform_data pmem_pdata = {
 	.name = "pmem",
 	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
@@ -290,7 +293,7 @@ void __init msm_add_mem_devices(struct msm_pmem_setting *setting)
 		platform_device_register(&ram_console_device);
 	}
 }
-
+*/
 #define PM_LIBPROG      0x30000061
 #if (CONFIG_MSM_AMSS_VERSION == 6220) || (CONFIG_MSM_AMSS_VERSION == 6225)
 #define PM_LIBVERS      0xfb837d0b
@@ -407,7 +410,85 @@ int __init parse_tag_engineerid(const struct tag *tags)
 	return engineerid;
 }
 __tagtable(ATAG_ENGINEERID, parse_tag_engineerid);
+/* G-Sensor calibration value */
+#define ATAG_GS         0x5441001d
 
+unsigned int gs_kvalue;
+EXPORT_SYMBOL(gs_kvalue);
+
+static int __init parse_tag_gs_calibration(const struct tag *tag)
+{
+	gs_kvalue = tag->u.revision.rev;
+	printk(KERN_DEBUG "%s: gs_kvalue = 0x%x\n", __func__, gs_kvalue);
+	return 0;
+}
+
+__tagtable(ATAG_GS, parse_tag_gs_calibration);
+
+/* Proximity sensor calibration values */
+#define ATAG_PS         0x5441001c
+
+unsigned int ps_kparam1;
+EXPORT_SYMBOL(ps_kparam1);
+
+unsigned int ps_kparam2;
+EXPORT_SYMBOL(ps_kparam2);
+
+static int __init parse_tag_ps_calibration(const struct tag *tag)
+{
+	ps_kparam1 = tag->u.serialnr.low;
+	ps_kparam2 = tag->u.serialnr.high;
+
+	printk(KERN_INFO "%s: ps_kparam1 = 0x%x, ps_kparam2 = 0x%x\n",
+		__func__, ps_kparam1, ps_kparam2);
+
+	return 0;
+}
+
+__tagtable(ATAG_PS, parse_tag_ps_calibration);
+
+/* camera values */
+#define ATAG_CAM	0x54410021
+
+int __init parse_tag_cam(const struct tag *tags)
+{
+int mem_size = 0, find = 0;
+struct tag *t = (struct tag *)tags;
+
+for (; t->hdr.size; t = tag_next(t)) {
+	if (t->hdr.tag == ATAG_CAM) {
+		printk(KERN_DEBUG "find the memsize tag\n");
+		find = 1;
+		break;
+	}
+}
+
+if (find) {
+	mem_size = t->u.revision.rev;
+}
+printk(KERN_DEBUG "parse_tag_memsize: %d\n", mem_size);
+return mem_size;
+}
+__tagtable(ATAG_CAM, parse_tag_cam);
+
+/* Gyro/G-senosr calibration values */
+#define ATAG_GRYO_GSENSOR	0x54410020
+unsigned char gyro_gsensor_kvalue[37];
+EXPORT_SYMBOL(gyro_gsensor_kvalue);
+
+static int __init parse_tag_gyro_gsensor_calibration(const struct tag *tag)
+{
+	int i;
+	unsigned char *ptr = (unsigned char *)&tag->u;
+	memcpy(&gyro_gsensor_kvalue[0], ptr, sizeof(gyro_gsensor_kvalue));
+
+	printk(KERN_DEBUG "gyro_gs data\n");
+	for (i = 0; i < sizeof(gyro_gsensor_kvalue); i++)
+		printk(KERN_DEBUG "[%d]:0x%x", i, gyro_gsensor_kvalue[i]);
+
+	return 0;
+}
+__tagtable(ATAG_GRYO_GSENSOR, parse_tag_gyro_gsensor_calibration);
 static int mfg_mode;
 int __init board_mfg_mode_init(char *s)
 {

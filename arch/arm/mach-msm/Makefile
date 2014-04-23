@@ -334,7 +334,7 @@ obj-$(CONFIG_MACH_HTCLEO) += board-htcleo-ts.o board-htcleo-mmc.o ieee754-df.o
 
 obj-$(CONFIG_MACH_HTCLEO) += board-htcleo-audio.o board-htcleo-acoustic.o
 obj-$(CONFIG_MACH_HTCLEO) += board-htcleo-rfkill.o board-htcleo-wifi.o board-htcleo-microp.o htc_awb_cal.o
-obj-$(CONFIG_MACH_HTCLEO) += board-htcleo-proximity.o board-htcleo-ls.o board-htcleo-gsensor.o msm_flashlight.o
+obj-$(CONFIG_MACH_HTCLEO) += board-htcleo-proximity.o board-htcleo-ls.o board-htcleo-gsensor.o devices_htc.o msm_flashlight.o
 obj-$(CONFIG_HTCLEO_BACKLIGHT) += board-htcleo-bl.o
 obj-$(CONFIG_HTCLEO_BACKLIGHT_LED) += board-htcleo-bl-led.o
 obj-$(CONFIG_HTCLEO_BTN_BACKLIGHT_MANAGER) += board-htcleo-btn_backlight-manager.o
@@ -345,7 +345,7 @@ CFLAGS_board-9615.o += -Idrivers/usb/gadget
 obj-$(CONFIG_ARCH_FSM9XXX) += board-fsm9xxx.o
 
 obj-$(CONFIG_TROUT_BATTCHG) += htc_battery.o
-
+obj-y += htc_battery.o
 obj-$(CONFIG_HTC_PWRSINK) += htc_pwrsink.o
 obj-$(CONFIG_HTC_HEADSET) += htc_headset.o
 ifneq ($(CONFIG_MACH_HTCLEO),y)
